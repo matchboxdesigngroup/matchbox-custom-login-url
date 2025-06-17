@@ -37,7 +37,7 @@ add_action(
 );
 
 /**
- * Changes the default login URL to the custom slug (e.g., /web-ad/) and preserves redirect and reauth query parameters.
+ * Changes the default login URL to the custom slug and preserves redirect and reauth query parameters.
  */
 add_filter(
 	'login_url',
@@ -94,7 +94,7 @@ add_filter(
 );
 
 /**
- * Protects wp-login.php by requiring the custom_login_gate cookie for access, except for postpass and logout actions. Otherwise, returns a 403 Forbidden error.
+ * Protects wp-login.php by requiring the custom-login-url cookie for access, except for postpass and logout actions. Otherwise, returns a 403 Forbidden error.
  */
 add_action(
 	'login_init',
