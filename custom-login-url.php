@@ -14,6 +14,30 @@ defined( 'ABSPATH' ) || exit;
 
 $login_slug = defined( 'LOGIN_URL' ) ? LOGIN_URL : 'web-ad';
 
+// Check if a page or post with $login_slug exists.
+$login_slug_exists = false;
+if ( function_exists( 'get_page_by_path' ) ) {
+	$page = get_page_by_path( $login_slug );
+	if ( $page ) {
+		$login_slug_exists = true;
+	} else {
+		$post = get_posts( [ 
+			'name' => $login_slug,
+			'post_type' => 'any',
+			'post_status' => 'any',
+			'numberposts' => 1,
+		] );
+		if ( ! empty( $post ) ) {
+			$login_slug_exists = true;
+		}
+	}
+}
+
+if ( $login_slug_exists ) {
+	error_log( 'Custom Login URL Error: The login slug "' . $login_slug . '" already exists.' );
+	return;
+}
+
 /**
  * Checks if the request is for the custom login slug (e.g., /web-ad), sets a short-lived cookie to allow access to wp-login.php, and redirects to wp-login.php with any query vars preserved.
  */
