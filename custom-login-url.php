@@ -118,14 +118,15 @@ add_filter(
 );
 
 /**
- * Protects wp-login.php by requiring the custom-login-url cookie for access, except for postpass and logout actions. Otherwise, returns a 403 Forbidden error.
+ * Protects wp-login.php by requiring the custom-login-url cookie for access, except for postpass, logout, and password-reset actions. Otherwise, returns a 403 Forbidden error.
  */
 add_action(
 	'login_init',
 	function () {
 		$req_path = wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '', PHP_URL_PATH );
 		$action = isset( $_REQUEST['action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['action'] ) ) : '';
-		if ( strpos( $req_path, 'wp-login.php' ) !== false && ! in_array( $action, array( 'postpass', 'logout' ), true ) ) {
+		$allowed_without_cookie = array( 'postpass', 'logout', 'rp', 'resetpass', 'lostpassword' );
+		if ( strpos( $req_path, 'wp-login.php' ) !== false && ! in_array( $action, $allowed_without_cookie, true ) ) {
 			if ( isset( $_COOKIE['custom-login-url'] ) && hash_equals( $_COOKIE['custom-login-url'], hash_hmac( 'sha256', 'allowed', AUTH_SALT ) ) ) {
 				return;
 			}
