@@ -153,6 +153,62 @@ final class Matchbox_Custom_Login_URL {
 		if ( self::$block_request ) {
 			self::render_404();
 		}
+
+		if ( self::should_block_admin() ) {
+			self::block_admin();
+		}
+	}
+
+	/**
+	 * Sends a logged-out wp-admin request to the home page.
+	 *
+	 * The theme's 404 cannot be rendered here. wp-admin/admin.php defines
+	 * WP_ADMIN before WordPress boots, so is_admin() is true for the rest of the
+	 * request and cannot be unset; is_admin_bar_showing() then returns true
+	 * unconditionally, before the show_admin_bar filter runs, and rendering a
+	 * front-end template fatals in admin-bar.php on get_current_screen() -
+	 * which only exists once the admin bootstrap has loaded
+	 * wp-admin/includes/screen.php. Redirecting keeps the slug out of the
+	 * response without depending on any of that.
+	 */
+	private static function block_admin() {
+		nocache_headers();
+		wp_safe_redirect( home_url( '/' ), 302 );
+		exit;
+	}
+
+	/**
+	 * Determines whether to block a logged-out request to wp-admin.
+	 *
+	 * /wp-admin/ is a public probe target. Left alone, core's auth_redirect()
+	 * sends anonymous requests to wp_login_url(), putting the custom slug in a
+	 * Location header for anyone who asks - which gives away the slug more
+	 * cheaply than wp-login.php ever did.
+	 *
+	 * @return bool
+	 */
+	private static function should_block_admin() {
+		global $pagenow;
+
+		if ( '' === self::slug() || ! is_admin() || wp_doing_ajax() || is_user_logged_in() ) {
+			return false;
+		}
+
+		// Endpoints under wp-admin that legitimately serve logged-out requests,
+		// plus the install and repair routines, which must stay reachable when
+		// there is no session to be had.
+		$public_endpoints = array(
+			'admin-ajax.php',
+			'admin-post.php',
+			'load-scripts.php',
+			'load-styles.php',
+			'install.php',
+			'setup-config.php',
+			'upgrade.php',
+			'repair.php',
+		);
+
+		return ! in_array( $pagenow, $public_endpoints, true );
 	}
 
 	/**
