@@ -39,6 +39,7 @@ add_filter( 'matchbox_custom_login_slug', fn() => 'some-other-slug' );
 - **Logged-out `wp-admin` requests go to the home page, not the login slug.** Core's `auth_redirect()` would send them to `wp_login_url()`, putting the slug in a `Location` header for anyone who requests `/wp-admin/` — a cheaper giveaway than `wp-login.php` ever was. These stay reachable without a session: `admin-ajax.php`, `admin-post.php`, `load-scripts.php`, `load-styles.php`, `install.php`, `setup-config.php`, `upgrade.php` and `repair.php`.
 
   The theme's 404 is deliberately *not* used here. `wp-admin/admin.php` defines `WP_ADMIN` before WordPress boots, so `is_admin()` is true for the rest of the request and cannot be unset; `is_admin_bar_showing()` then returns true unconditionally, and rendering a front-end template fatals in `admin-bar.php` on `get_current_screen()`, which only exists once the admin bootstrap has loaded `wp-admin/includes/screen.php`. A redirect does not depend on any of that.
+- **`wp-signup.php` and `wp-activate.php` 404 on single-site installs.** With no multisite, both files exist only to `wp_redirect( wp_registration_url() )`, which is now the slug — so requesting either one returned it in a `Location` header. On multisite they are genuine pages and are left untouched.
 - **Core's convenience redirects are disabled.** WordPress hooks `wp_redirect_admin_locations()` to `template_redirect`, which turns any 404 at `/wp-login.php`, `/login`, `/admin` or `/dashboard` into a redirect to `wp_login_url()` — which would hand the custom slug to anyone who guessed one of those paths. The plugin removes that action, so all four now 404. The side effect is that `/admin` and `/dashboard` no longer shortcut to `/wp-admin/`.
 
 ## 🚨 Known limitations
@@ -47,7 +48,7 @@ add_filter( 'matchbox_custom_login_slug', fn() => 'some-other-slug' );
 - The slug is only as hidden as your front end lets it be. Anything that renders a login link on a public page — a comment form, `wp_loginout()`, the Meta widget, a "Members" menu item — puts the slug in the HTML. Check your theme if the slug needs to stay unknown to visitors.
 - It does **not** cover other authentication surfaces: XML-RPC (`system.multicall` credential stuffing), the REST API, or `admin-ajax.php`. Disable or restrict those separately if they are not needed.
 - Serving a themed 404 for `wp-login.php` means WordPress boots and resolves a query for every scanner that probes it. On a site under heavy bot traffic, block `/wp-login.php` at the web server or CDN as well.
-- Multisite `wp-signup.php` and `wp-activate.php` are not covered.
+- On multisite, `wp-signup.php` and `wp-activate.php` are real pages and are left alone; the slug is not hidden from them.
 - Ensure no other login-redirect or "hide login" plugin is active.
 
 ## 👨‍💻 Developer notes

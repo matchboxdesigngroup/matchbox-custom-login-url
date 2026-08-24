@@ -139,6 +139,14 @@ final class Matchbox_Custom_Login_URL {
 
 		if ( 'wp-login.php' === $pagenow ) {
 			self::$block_request = true;
+			return;
+		}
+
+		// On a single site these two files exist only to bounce visitors to
+		// wp_registration_url(), which is now the slug - so they hand it to
+		// anyone who requests them. On multisite they are real pages; leave them.
+		if ( ! is_multisite() && in_array( $pagenow, array( 'wp-signup.php', 'wp-activate.php' ), true ) ) {
+			self::$block_request = true;
 		}
 	}
 
