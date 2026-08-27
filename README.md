@@ -1,18 +1,18 @@
-# Custom Login URL 
-MU plugin that changes the default login URL (`/wp-login.php`) to a custom slug and protects the login page from unauthorized direct access.
+# Custom Login URL
 
-## 📌 Features
+MU plugin that serves the WordPress login screen from a custom slug and makes `wp-login.php` return a 404.
 
-- ✅ Redirects custom slug to `wp-login.php`
-- ✅ Sets a short-lived HMAC-secured cookie to authorize access
-- ✅ Protects `wp-login.php` with a 403 Forbidden error if accessed directly
-- ✅ Preserves query parameters like `redirect_to`, `reauth`, `action`
-- ✅ Supports:
-  - Login
-  - Logout
-  - Registration
-  - Lost Password
-- ✅ MU-compatible: load automatically without user activation
+## 📌 How it works
+
+The login screen is **rendered in place** at the custom slug — the request is never redirected to `wp-login.php`. Because of that:
+
+- The browser address bar stays on the custom slug for the whole login flow.
+- No access cookie or handshake is involved.
+- There is no interstitial redirect for a page cache or CDN to cache.
+
+Direct requests to `wp-login.php` render the theme's own 404 template, so a scanner cannot tell the file is there.
+
+Every URL core builds from `wp-login.php` is rewritten to the custom slug by filtering `site_url()` and `network_site_url()`. That covers login, logout, registration, lost password, the login form's own `action` attribute, interim (session-expired) logins, and the reset links inside password-reset and new-user emails.
 
 ## ⚙️ Installation
 
@@ -21,25 +21,47 @@ MU plugin that changes the default login URL (`/wp-login.php`) to a custom slug 
    ```php
    define( 'LOGIN_URL', 'your-custom-login-slug' );
    ```
-3. Access the login page via: https://yourdomain.com/your-custom-login-slug
+   The default is `web-ad`. The value is run through `sanitize_title()`.
+3. Log in at `https://yourdomain.com/your-custom-login-slug/`.
 
-## 🔐 Security Notes
-* Prevents direct access to wp-login.php unless a valid custom-login-url HMAC cookie is present.
-* Cookie is valid for 5 minutes.
-* Exempts action=postpass and action=logout from protection to preserve functionality.
+### Filter
 
-## 🚨 Known Limitations
-* This plugin only masks the login URL and adds basic protection.
-* It is not a replacement for full authentication firewalls or security plugins.
-* Ensure that no conflicting login redirect plugins are active.
+```php
+add_filter( 'matchbox_custom_login_slug', fn() => 'some-other-slug' );
+```
 
-## 👨‍💻 Developer Notes
-* Built for WordPress 5.0+ and PHP 8.0+.
-* Uses:
-   * template_redirect to handle access via custom slug
-   * login_url, logout_url, register_url, lostpassword_url filters to rewrite links
-   * login_init to block unauthorized access
-  
+## 🔐 Behavior notes
+
+- **Slug collisions.** New top-level posts and pages cannot claim the login slug — `wp_unique_post_slug` appends `-2` instead. If content already used the slug before the plugin was installed, an admin notice warns that the content is now unreachable.
+- **Fail-safe.** If `LOGIN_URL` sanitizes to an empty string, the plugin stands down completely and leaves `wp-login.php` alone rather than locking everyone out. An admin notice reports it.
+- **Locked out?** Rename or delete `wp-content/mu-plugins/custom-login-url.php` over SFTP or WP-CLI. `wp-login.php` works normally again immediately.
+- **Subdirectory installs** are handled — the request path is compared relative to `home_url()`.
+- **Logged-out `wp-admin` requests go to the home page, not the login slug.** Core's `auth_redirect()` would send them to `wp_login_url()`, putting the slug in a `Location` header for anyone who requests `/wp-admin/` — a cheaper giveaway than `wp-login.php` ever was. These stay reachable without a session: `admin-ajax.php`, `admin-post.php`, `load-scripts.php`, `load-styles.php`, `install.php`, `setup-config.php`, `upgrade.php` and `repair.php`.
+
+  The theme's 404 is deliberately *not* used here. `wp-admin/admin.php` defines `WP_ADMIN` before WordPress boots, so `is_admin()` is true for the rest of the request and cannot be unset; `is_admin_bar_showing()` then returns true unconditionally, and rendering a front-end template fatals in `admin-bar.php` on `get_current_screen()`, which only exists once the admin bootstrap has loaded `wp-admin/includes/screen.php`. A redirect does not depend on any of that.
+- **`wp-signup.php` and `wp-activate.php` 404 on single-site installs.** With no multisite, both files exist only to `wp_redirect( wp_registration_url() )`, which is now the slug — so requesting either one returned it in a `Location` header. On multisite they are genuine pages and are left untouched.
+- **Core's convenience redirects are disabled.** WordPress hooks `wp_redirect_admin_locations()` to `template_redirect`, which turns any 404 at `/wp-login.php`, `/login`, `/admin` or `/dashboard` into a redirect to `wp_login_url()` — which would hand the custom slug to anyone who guessed one of those paths. The plugin removes that action, so all four now 404. The side effect is that `/admin` and `/dashboard` no longer shortcut to `/wp-admin/`.
+
+## 🚨 Known limitations
+
+- This plugin obscures the login URL. It is not an authentication firewall and does not rate-limit login attempts.
+- The slug is only as hidden as your front end lets it be. Anything that renders a login link on a public page — a comment form, `wp_loginout()`, the Meta widget, a "Members" menu item — puts the slug in the HTML. Check your theme if the slug needs to stay unknown to visitors.
+- It does **not** cover other authentication surfaces: XML-RPC (`system.multicall` credential stuffing), the REST API, or `admin-ajax.php`. Disable or restrict those separately if they are not needed.
+- Serving a themed 404 for `wp-login.php` means WordPress boots and resolves a query for every scanner that probes it. On a site under heavy bot traffic, block `/wp-login.php` at the web server or CDN as well.
+- On multisite, `wp-signup.php` and `wp-activate.php` are real pages and are left alone; the slug is not hidden from them.
+- Ensure no other login-redirect or "hide login" plugin is active.
+
+## 👨‍💻 Developer notes
+
+- Built for WordPress 5.0+ and PHP 7.4+.
+- Everything is namespaced inside the `Matchbox_Custom_Login_URL` class; no globals are introduced.
+- Hooks used:
+  - `plugins_loaded` (priority 1) — classifies the request and corrects `$pagenow`
+  - `wp_loaded` (priority 1) — loads `wp-login.php` in place, or renders the 404
+  - `site_url`, `network_site_url`, `wp_redirect` — rewrite `wp-login.php` URLs to the slug
+  - `remove_action( 'template_redirect', 'wp_redirect_admin_locations', 1000 )` — stops core leaking the slug
+  - `wp_unique_post_slug`, `save_post`, `admin_notices` — slug collision handling
+
 ⸻
 
 🛠 Made with care by Matchbox Design Group
